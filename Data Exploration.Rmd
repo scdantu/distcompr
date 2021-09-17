@@ -1,0 +1,549 @@
+
+
+---
+title: "Dissertation Coursework"
+author: "1950261"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+version: 1
+---
+
+First of all, will load all the packages to run all the required functions smoothly.
+
+```{r warning=FALSE, message=FALSE}
+
+# list of packages - 
+packages = c('tree', 'dplyr', 'kohonen', 'stringr', 'libr', 'tidyverse', 'skimr', 'corrplot', 'ggcorrplot', 'tidyverse', 'cluster', 'factoextra', 'dendextend', 'pROC', 'randomForest', 'ggplot2', 'visdat')
+
+# Load the package or install and load it
+package.check <- lapply(
+  packages,
+  FUN = function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+
+```
+
+All input dataset file's name were stored. 
+
+```{r}
+
+file_list <- list.files(path="C:/Users/bksah/Desktop/Dissertation/Data")
+file_list[402]
+
+```
+
+All datasets were loaded and merged with unique identifier as "Time". 
+
+```{r}
+
+for (value in c(1:length(file_list)))
+
+{
+  file <- paste("data/",file_list[value], sep = '')
+  file_data = read.csv(file, header = FALSE, sep = '')
+  
+  if (value == 1)
+  {
+    
+    dataset <- cbind(file_data$V1, file_data$V2)
+  }
+  else {
+    
+    dataset <- merge(dataset, file_data, by = "V1")
+  }
+  
+}
+
+```
+
+
+
+After loading the dataset, structure was checked for each feature. 
+
+```{r}
+
+str(dataset)
+
+```
+
+Appropriate name was assigned to each column according to simulated feature. 
+
+```{r}
+
+library(stringr)
+
+values <- str_sub(file_list,-10, -5)
+values[1:5]
+
+```
+
+```{r}
+
+names(dataset) <- c('Time', values[1:402])
+
+```
+
+```{r}
+
+which(names(dataset) == '9_0-A0')
+which(names(dataset) == '3_0-A0')
+
+names(dataset)[402] = '99_0-A0'
+names(dataset)[401] = '153_0-A0'
+
+which(names(dataset) == '9_0-A0')
+which(names(dataset) == '3_0-A0')
+
+which(names(dataset) == '99_0-A0')
+which(names(dataset) == '153_0-A0')
+
+```
+
+Now we will have a quick glance on merged datasets using head function. 
+
+```{r}
+head(dataset)
+```
+
+
+Rows names were assigned as Time (in nanometer) as an unique identifier. 
+```{r}
+rownames(dataset) <- dataset[,1]
+dataset <- dataset[,-1]
+
+dataset_T <- t(dataset)
+# View(dataset_T[, c(1:10)])
+
+```
+
+Here, also use skim function to get a detailed look in these 402 features.
+
+```{r}
+
+library(skimr)
+skim(dataset)
+
+```
+
+Dataset is converted into data frame format. 
+
+```{r}
+
+dataset <- as.data.frame(dataset)
+dataset_T <- as.data.frame(dataset_T)
+
+```
+
+
+Probability density function ran to transform the dataset into density values. 
+
+```{r}
+
+density_1 = function(x) {
+  density_output <- density(x)
+  return(density_output$y)
+}
+
+density_results <- apply(X = dataset, FUN = density_1, MARGIN = 2)
+# View(density_results)
+
+```
+
+```{r}
+
+density_results <- as.data.frame(density_results)
+
+```
+
+
+
+To see the missingness in loaded dataset - vis_miss function was ran. 
+
+```{r}
+library(visdat)
+vis_miss(dataset[,c(1:30)], warn_large_data = FALSE)
+
+```
+
+
+Quantitative correlation report got generated. 
+
+```{r}
+
+library(corrplot)
+library(foreign)
+library(dplyr)
+library(psych)
+
+# correlation matrix generated.
+CORRECTED_cor <- cor(density_results) 
+
+# Matrix converted into a tabulate datadrame pattern.
+CORRECTED_cor <- tbl_df(CORRECTED_cor)    
+print(CORRECTED_cor)
+
+
+# lower part of diagonal was transformed into NA values since lower and upper triangle keeps the same value in correlation scenario. 
+CORRECTED_cor[lower.tri(CORRECTED_cor, diag = FALSE)] <- NA 
+dim(CORRECTED_cor)
+
+CORRECTED_cor_70 <- CORRECTED_cor
+CORRECTED_cor_30 <- CORRECTED_cor
+
+# Number of records have correlation value greater than 0.70.
+CORRECTED_cor_70[abs(CORRECTED_cor_70) < 0.70] <- NA 
+sum(!is.na(CORRECTED_cor_70)) 
+
+# Number of records have correlation value less than 0.30.
+CORRECTED_cor_30[abs(CORRECTED_cor_30) > 0.30] <- NA # correlations below |.70| NA
+sum(!is.na(CORRECTED_cor_30)) # only show cases with cor > |.70|
+
+```
+Among 80802 correlation records, 42628 records have correlation value greater than 0.70 and 12816 records have correlation value less than 0.30.
+
+It shows a strong multi-collinear scenario here.
+
+Principle component analysis (PCA) was ran to see the multi-collinear scenario. 
+
+```{r}
+dataset_cor <- cov(density_results[,c(-382)])
+dataset_eigen <- eigen(dataset_cor)
+dataset_eigen_vectors <- -dataset_eigen$vectors
+rownames(dataset_eigen_vectors) <- colnames(density_results[-382])
+PVE <- dataset_eigen$values / sum(dataset_eigen$values)
+round(PVE, 2)
+barplot(PVE[1:5], main="Scree Plot", xlab="Principal Component", ylab="Percent Variation")
+
+plot(
+  cumsum(PVE),
+  ylim = c(0,1),
+  xlab = 'PC',
+  ylab = 'cumulative PEV',
+  pch = 20,
+  col = 'red'
+)
+
+dataset_eigen_vectors[,c(1:3)]
+```
+
+
+Here, top highly correlated simulated features were extracted from PC1.
+```{r}
+order(abs(dataset_eigen_vectors[,c(1)]))
+
+order_value <- order(abs(dataset_eigen_vectors[,c(1)]))
+dataset_eigen_vectors[order_value,c(1)]
+
+value_1 <- which(abs(dataset_eigen_vectors[order_value,c(1)]) > 0.06)
+labels(value_1)
+
+```
+
+Example - to see the correlation value among the results retrieved in previous chunk. 
+```{r}
+
+cor(density_results[,c('129-NW', '129-EE')])
+
+```
+
+
+
+```{r}
+
+
+
+color <- c("red","blue","green","orange", "darkcyan","chartreuse","purple")
+
+Random <- 1
+for (graph in labels(value_1[103:109])) {
+
+  if (Random == 1) {
+    plot(density(dataset[,c(graph)]), col = color[Random],
+    main="Multi-Collinear scenario in PCA",
+xlab="Distance between two points in protein (in nanometer)",
+ylab="Density",
+lwd=2)
+  }  
+  else {
+    lines(density(dataset[,c(graph)]), col = color[Random])
+  }
+  Random <- Random + 1
+}
+
+legend("topright",
+legend=c(labels(value_1)[103:109]),
+col=c("red","blue","green","orange", "darkcyan","chartreuse","purple"),
+lty=1,lwd=2)
+
+
+```
+
+Here, top highly correlated simulated features were extracted from PC2. 
+
+```{r}
+
+order_value <- order(abs(dataset_eigen_vectors[,c(2)]))
+dataset_eigen_vectors[order_value,c(2)]
+PC_2_Cor <- which(dataset_eigen_vectors[order_value,c(2)] > 0.05)
+names(PC_2_Cor)
+
+```
+
+
+Here, top highly correlated simulated features were extracted from PC3. 
+
+```{r}
+
+order_value <- order(abs(dataset_eigen_vectors[,c(3)]))
+dataset_eigen_vectors[order_value,c(3)]
+PC_3_Cor <- which(dataset_eigen_vectors[order_value,c(3)] > 0.05)
+names(PC_3_Cor)
+
+```
+
+
+Dataset with density values were transposed. 
+```{r}
+results_df <- (t(density_results))
+results_df <- as.data.frame(results_df)
+
+```
+
+
+
+
+
+Clustering for density value based dataset. 
+```{r}
+
+library(philentropy)
+density_distance <- distance(results_df, method = "bhattacharyya", use.row.names = TRUE)
+library(cluster)
+density_cluster <- cluster::pam(x = density_distance, k = 2)
+density_cluster$silinfo$avg.width
+
+plot(density_cluster)
+
+```
+
+Clustering for density value based dataset. 
+```{r}
+
+library(philentropy)
+continuous_distance <- distance(t(dataset), method = "euclidean", use.row.names = TRUE)
+library(cluster)
+continuous_cluster <- cluster::pam(x = continuous_distance, k = 2)
+continuous_cluster$silinfo$avg.width
+plot(continuous_cluster)
+
+```
+
+
+Number of peaks across each univariate distribution being calculated to assess - do distributions belong to uni-modal or multi-modal pattern. 
+
+```{r}
+
+library(pracma)
+
+density_1 = function(x) {
+  density_output <- density(x)
+  peaks_output <- findpeaks(density_output$y, nups = 18, ndowns = 18, npeaks = 5, minpeakdistance = 50, minpeakheight = (max(density_output$y))*0.7)
+  return(peaks_output)
+}
+
+results <- apply(X = dataset, FUN = density_1, MARGIN = 2)
+
+
+```
+
+User defined function is being written to see the count of uni-modal and multi-modal based univariate distributions. 
+
+```{r}
+
+
+peaks = 0
+val = 1
+for (val2 in results) {
+  
+if (length(val2) <= 4) {
+  
+    peaks[val] = 1
+    val = val + 1
+}   
+  
+  else if (length(val2) > 5 & length(val2) < 16){
+    peaks[val] = 2
+    val = val + 1
+  }
+    
+  else {
+    peaks[val] = 4
+    val = val + 1
+  }
+    
+}
+
+length(peaks)
+
+table(peaks)
+```
+
+From above results - it looks mostly univariate distributions are uni-modal based and 44 univariate distributions are bi-modal based. 
+
+
+
+Hierarchical clustering was implemented across all the distance measures on density values based dataset. 
+
+```{r}
+
+library(philentropy)
+
+# getDistMethods()
+
+Similarity_Methods <- c("euclidean", "manhattan", "chebyshev", "sorensen", "gower", "soergel", "kulczynski_d", "canberra", "lorentzian", "intersection", "wavehedges", "czekanowski", "motyka", "kulczynski_s", "tanimoto", "inner_product", "harmonic_mean", "cosine", "jaccard", "dice", "hassebrook", "fidelity", "bhattacharyya", "squared_chord")
+
+for (value in Similarity_Methods)
+
+{  
+
+Hclust_results <- hclust(as.dist(distance(results_df, method = value, use.row.names = TRUE)), method = "single" )
+Hclust_results
+plot(Hclust_results, cex = 0.6, hang = -1, labels = FALSE)
+  
+}
+
+```
+
+
+
+We can see the limitation with Hierarchical clustering that there are no distinct clusters due to alike features since geometrical locations were overlapping. 
+
+# Synthetic data generation - 
+
+Data from random normal distribution based function got generated. 
+```{r}
+
+DF_1 <- data.frame(normal_dist=factor(paste("N-", 1:50000, sep = "")), matrix(rnorm(100*50000, 5, 0.6), ncol = 100))
+# View(DF_1)
+DF_1[,1] <- as.character(DF_1[,1])
+colnames(DF_1)[2:101] <- DF_1[1:100,1]
+DF_1 <- DF_1[,-1]
+
+```
+
+
+Data from random uniform distribution based function got generated.
+```{r}
+
+DF_2 <- data.frame(normal_dist=factor(paste("U-", 1:50000, sep = "")), matrix(runif(100*50000, 0, 15), ncol = 100))
+
+DF_2[,1] <- as.character(DF_2[,1])
+colnames(DF_2)[2:101] <- DF_2[1:100,1]
+DF_2 <- DF_2[,-1]
+
+
+```
+
+Data from random inverse distribution based function got generated.
+
+```{r}
+
+library(statmod)
+
+DF_3 <- data.frame(normal_dist=factor(paste("I-", 1:10000, sep = "")), matrix(rinvgauss(100*10000, mean = 5, dispersion = 0.2), ncol = 100))
+# View(DF_1)
+DF_3[,1] <- as.character(DF_3[,1])
+colnames(DF_3)[2:101] <- DF_3[1:100,1]
+DF_3 <- DF_3[,-1]
+# View(DF_3)
+
+```
+
+Data from random normal distribution based function got generated.
+
+```{r}
+
+DF_4 <- data.frame(normal_dist=factor(paste("N_1-", 1:50000, sep = "")), matrix(rnorm(100*50000, 5, 0.7), ncol = 100))
+
+DF_4[,1] <- as.character(DF_4[,1])
+colnames(DF_4)[2:101] <- DF_4[1:100,1]
+DF_4 <- DF_4[,-1]
+
+```
+
+
+Generated datasets got merged into one big synthetic dataset. 
+```{r}
+
+DF_Final <- cbind(DF_1, DF_2, DF_4)
+# View(DF_Final)
+
+```
+
+Cluster values (ground truth values) were assigned to each object. 
+
+```{r}
+
+DF_1_Rand <- as.data.frame(colnames(DF_1[1:100]))
+DF_1_Rand['Cluster'] <- 1
+colnames(DF_1_Rand)[1] <- 'Distribution'
+
+DF_2_Rand <- as.data.frame(colnames(DF_2[1:100]))
+DF_2_Rand['Cluster'] <- 3
+colnames(DF_2_Rand)[1] <- 'Distribution'
+
+DF_4_Rand <- as.data.frame(colnames(DF_4[1:100]))
+DF_4_Rand['Cluster'] <- 2
+colnames(DF_4_Rand)[1] <- 'Distribution'
+
+DF_Rand <- rbind(DF_1_Rand, DF_2_Rand, DF_4_Rand)
+
+```
+
+```{r}
+
+MinMax <- function(x){
+  tx <- (x - min(x)) / (max(x) - min(x))
+  return(tx)
+}
+# then apply the function to each column of the data set
+#   note: the apply function returns a matrix
+dataset_minmax <- apply(density_results, 2, MinMax)
+
+dataset_minmax <- as.data.frame(dataset_minmax)
+
+```
+
+
+
+```{r}
+
+plot(density(dataset_minmax$`129-MD`), col = "purple",
+    main="Scenario #4",
+xlab="Distance between two amino acids",
+ylab="Density",
+ylim = c(0,5),
+lwd=2)
+
+lines(density(dataset_minmax$`129-LA`),col = "green")
+
+legend("topright",
+legend=c("129-MD", "129-LA"),
+col=c("purple", "green"),
+lty=1,lwd=2)
+
+```
+
+
+
+
+
+

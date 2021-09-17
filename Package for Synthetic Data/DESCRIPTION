@@ -1,0 +1,25 @@
+Package: alpha1
+Title: Optimisation of distance measure according to provided dataset
+Version: 0.0.0.9000
+Authors@R: 
+    person(given = "Sahil",
+           family = "Wadhwa",
+           role = c("aut", "cre"),
+           email = "bksahilwadhwa@outlook.com",
+           comment = c(ORCID = "YOUR-ORCID-ID"))
+Description: This package offers a flexibility to find an optimised distance measure on the basis of provided dataset for both continuous data vectors as well as for univariate distributions computed through kernel density function. The performance of optimized distance measure is evaluated through analyzing the clustering results.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.1
+Imports: 
+    cluster,
+    forcats,
+    philentropy,
+    stats,
+    fossil,
+    funtimes,
+    factoextra
+URL: https://github.com/Sahil4466/alpha1
+BugReports: https://github.com/Sahil4466/alpha1/issues
